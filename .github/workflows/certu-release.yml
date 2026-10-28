@@ -1,0 +1,44 @@
+name: Certu release
+
+# Builds a reviewed upstream tag and publishes the plugin jar as a release of
+# this fork, so sonarqube.certu.dev installs a jar that only vlccrew controls.
+# The release tag is certu-<tag>, which upstream's release.yml (tags 0.*) ignores.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Upstream tag to build, e.g. 0.6.0
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Build
+        run: mvn -B package --file pom.xml
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          cd sonar-flutter-plugin/target
+          jar="sonar-flutter-plugin-${TAG}.jar"
+          sha256sum "$jar" | tee "$jar.sha256"
+          commit=$(git rev-parse HEAD)
+          gh release create "certu-${TAG}" "$jar" "$jar.sha256" \
+            --repo "$GITHUB_REPOSITORY" --target "$commit" --title "certu-${TAG}" \
+            --notes "Built by GitHub Actions from upstream tag ${TAG} (commit ${commit})."
